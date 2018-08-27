@@ -74,7 +74,7 @@ def __init__(_recipients: address[64], _tokenIds: uint256[64]):
   # self.supportedInterfaces['\x5b\x5e\x13\x9f'] = True
   for i in range(64):
     # stop as soon as there is a non-specified recipient
-    # if(_recipients[i] == 0x0000000000000000000000000000000000000000):
+    # if(_recipients[i] == ZERO_ADDRESS):
     #   return
     self.idToOwner[_tokenIds[i]] = _recipients[i]
     self.ownerToNFTokenCount[_recipients[i]] += 1
@@ -94,7 +94,7 @@ def supportsInterface(_interfaceID: bytes[4]) -> bool:
 @public
 @constant
 def balanceOf(_owner: address) -> uint256:
-  assert _owner != 0x0000000000000000000000000000000000000000
+  assert _owner != ZERO_ADDRESS
   return self.ownerToNFTokenCount[_owner]
 
 
@@ -104,7 +104,7 @@ def balanceOf(_owner: address) -> uint256:
 @public
 @constant
 def ownerOf(_tokenId: uint256) -> address:
-  assert self.idToOwner[_tokenId] != 0x0000000000000000000000000000000000000000
+  assert self.idToOwner[_tokenId] != ZERO_ADDRESS
   return self.idToOwner[_tokenId]
 
 ### TRANSFER FUNCTION HELPERS ###
@@ -118,7 +118,8 @@ def ownerOf(_tokenId: uint256) -> address:
 # Throws if `_tokenId` is not a valid NFT.
 @private
 def _validateTransferFrom(_from: address, _to: address, _tokenId: uint256, _sender: address):
-  assert _from != 0x0000000000000000000000000000000000000000 # Throws if `_tokenId` is not a valid NFT.
+  assert _from != ZERO_ADDRESS # Throws if `_tokenId` is not a valid NFT.
+  assert _to != ZERO_ADDRESS # Throws if `_to` is the zero address. 
   assert self.idToOwner[_tokenId] == _from # Throws if `_from` is not the current owner. 
   senderIsOwner: bool = self.idToOwner[_tokenId] == _sender 
   senderIsApproved: bool = self.idToApprovals[_tokenId] == _sender
@@ -126,12 +127,11 @@ def _validateTransferFrom(_from: address, _to: address, _tokenId: uint256, _send
   # Throws unless `msg.sender` is the current owner, an authorized operator, or the approved
   #   address for this NFT. 
   assert (senderIsOwner or senderIsApproved) or senderIsOperator
-  assert _to != 0x0000000000000000000000000000000000000000 # Throws if `_to` is the zero address. 
 
 @private
 def _doTransfer(_from: address, _to: address, _tokenId: uint256):
   self.idToOwner[_tokenId] = _to # 1. update idToOwner
-  self.idToApprovals[_tokenId] = 0x0000000000000000000000000000000000000000 # 2. zero out idToApprovals
+  self.idToApprovals[_tokenId] = ZERO_ADDRESS # 2. zero out idToApprovals
   self.ownerToNFTokenCount[_to] += 1 # 3. increment ownerToNFTokenCount for _to
   self.ownerToNFTokenCount[_from] -= 1 # 3. decrement ownerToNFTokenCount for _from
   log.Transfer(_from, _to, _tokenId)
@@ -162,36 +162,14 @@ def transferFrom(_from: address, _to: address, _tokenId: uint256):
 # @param _to The new owner.
 # @param _tokenId The NFT to transfer.
 @public
-def safeTransferFrom(_from: address, _to: address, _tokenId: uint256):
+def safeTransferFrom(_from: address, _to: address, _tokenId: uint256, _data: bytes[1024]=b''):
   self._validateTransferFrom(_from, _to, _tokenId, msg.sender)
   self._doTransfer(_from, _to, _tokenId)
-  _operator: address = 0x0000000000000000000000000000000000000000
+  _operator: address = ZERO_ADDRESS
   # if(msg.sender != _to)
   if(_to.codesize > 0):
-    returnValue: bytes32 = NFTReceiver(_to).onERC721Received(_operator, _from, _tokenId, '')
+    returnValue: bytes32 = NFTReceiver(_to).onERC721Received(_operator, _from, _tokenId, _data)
     assert returnValue == 0xf0b9e5ba00000000000000000000000000000000000000000000000000000000
-
-# @dev Transfers the ownership of an NFT from one address to another address.
-# @notice Throws unless `msg.sender` is the current owner, an authorized operator, or the
-# approved address for this NFT. Throws if `_from` is not the current owner. Throws if `_to` is
-# the zero address. Throws if `_tokenId` is not a valid NFT. When transfer is complete, this
-# function checks if `_to` is a smart contract (code size > 0). If so, it calls `onERC721Received`
-# on `_to` and throws if the return value is not `bytes4(keccak256("onERC721Received(address,uint256,bytes)"))`.
-# @param _from The current owner of the NFT.
-# @param _to The new owner.
-# @param _tokenId The NFT to transfer.
-# @param _data Additional data with no specified format, sent in call to `_to`.
-@public
-def safeTransferFromWithData(_from: address, _to: address, _tokenId: uint256, _data: bytes[1024]):
-# Note: This function should be named `safeTransferFrom()` per erc721. But overloading is not 
-#   allowed  cannot be implemented vyper. Default values will soon enable support for this.
-  self._validateTransferFrom(_from, _to, _tokenId, msg.sender)
-  self._doTransfer(_from, _to, _tokenId)
-  _operator: address = 0x0000000000000000000000000000000000000000
-  if(_to.codesize > 0):
-    returnValue: bytes32 = NFTReceiver(_to).onERC721Received(_operator, _from, _tokenId, '')
-    assert returnValue == 0xf0b9e5ba00000000000000000000000000000000000000000000000000000000
-
   
 
 # @dev Set or reaffirm the approved address for an NFT.
@@ -218,7 +196,7 @@ def approve(_approved: address, _tokenId: uint256):
 # @param _approved True if the operators is approved, false to revoke approval.
 @public
 def setApprovalForAll(_operator: address, _approved: bool):
-  assert _operator != 0x0000000000000000000000000000000000000000
+  assert _operator != ZERO_ADDRESS
   self.ownerToOperators[msg.sender][_operator] = _approved
   log.ApprovalForAll(msg.sender, _operator, _approved)
 
@@ -228,7 +206,7 @@ def setApprovalForAll(_operator: address, _approved: bool):
 @public
 @constant
 def getApproved(_tokenId: uint256) -> address:
-  assert self.idToOwner[_tokenId] != 0x0000000000000000000000000000000000000000
+  assert self.idToOwner[_tokenId] != ZERO_ADDRESS
   return self.idToApprovals[_tokenId]
 
 # @dev Checks if `_operator` is an approved operator for `_owner`.
@@ -238,6 +216,6 @@ def getApproved(_tokenId: uint256) -> address:
 @constant
 def isApprovedForAll( _owner: address, _operator: address) -> bool:
   # TODO: check original for _owner == 0x0
-  if (_owner == 0x0000000000000000000000000000000000000000):
+  if (_owner == ZERO_ADDRESS):
     return False
   return (self.ownerToOperators[_owner])[_operator]
